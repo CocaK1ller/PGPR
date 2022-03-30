@@ -109,6 +109,7 @@ def extract_embeddings(args):
 
 
 def main():
+    print(torch.cuda.is_available())
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default=BEAUTY, help='One of {beauty, cd, cell, clothing}.')
     parser.add_argument('--name', type=str, default='train_transe_model', help='model name.')
