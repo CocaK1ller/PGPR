@@ -168,7 +168,7 @@ def train(args):
             step += 1
 
             # Report performance
-            if step > 0 and step % 100 == 0:
+            if step > 0 and step % 10000 == 0:
                 avg_reward = np.mean(total_rewards) / args.batch_size
                 avg_loss = np.mean(total_losses)
                 avg_ploss = np.mean(total_plosses)
