@@ -117,7 +117,7 @@ def main():
     parser.add_argument('--gpu', type=str, default='1', help='gpu device.')
     parser.add_argument('--epochs', type=int, default=30, help='number of epochs to train.')
     parser.add_argument('--batch_size', type=int, default=64, help='batch size.')
-    parser.add_argument('--lr', type=float, default=0.5, help='learning rate.')
+    parser.add_argument('--lr', type=float, default=0.05, help='learning rate.')
     parser.add_argument('--weight_decay', type=float, default=0, help='weight decay for adam.')
     parser.add_argument('--l2_lambda', type=float, default=0, help='l2 lambda')
     parser.add_argument('--max_grad_norm', type=float, default=5.0, help='Clipping gradient.')
