@@ -171,6 +171,43 @@ class AmazonDataLoader(object):
                         data.append(-1)
                     else:
                         data.append(random.choice(product_knowledge[pr]))
+                brands=getattr(self.dataset, 'produced_by').data
+                categories = getattr(self.dataset, 'belongs_to').data
+                also_b=getattr(self.dataset, 'also_bought').data
+                also_v=getattr(self.dataset, 'also_viewed').data
+                brand_ca=[]
+                category_ca=[]
+                also_b_ca=[]
+                also_v_ca=[]
+                for i in range(len(brands)):
+                    if len(brands[i])>0 and i!=product_idx:
+                        if data[3] in brands[i]:
+                            brand_ca.append(i)
+                    if len(categories[i])>0 and i!=product_idx:
+                        if data[4] in categories[i]:
+                            category_ca.append(i)
+                    if len(also_b[i])>0 and i!=product_idx:
+                        if data[5] in also_b[i]:
+                            also_b_ca.append(i)
+                    if len(also_v[i])>0 and i!=product_idx:
+                        if data[6] in also_v[i]:
+                            also_v_ca.append(i)
+                if len(brand_ca)<=0:
+                    data.append(-1)
+                else:
+                    data.append(random.choice(brand_ca))
+                if len(category_ca)<=0:
+                    data.append(-1)
+                else:
+                    data.append(random.choice(category_ca))
+                if len(also_b_ca)<=0:
+                    data.append(-1)
+                else:
+                    data.append(random.choice(also_b_ca))
+                if len(also_v_ca)<=0:
+                    data.append(-1)
+                else:
+                    data.append(random.choice(also_v_ca))
                 batch.append(data)
 
             # 2) Move to next word/review
