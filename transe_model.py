@@ -112,7 +112,10 @@ class KnowledgeEmbedding(nn.Module):
         rproduct1_idxs = batch_idxs[:, 5]
         rproduct2_idxs = batch_idxs[:, 6]
         rproduct3_idxs = batch_idxs[:, 7]
-
+        brand_pro=batch_idxs[:, 8]
+        category_pro=batch_idxs[:, 9]
+        also_b_pro=batch_idxs[:, 10]
+        also_v_pro=batch_idxs[:, 11]
         regularizations = []
 
         # user + purchase -> product
@@ -136,11 +139,21 @@ class KnowledgeEmbedding(nn.Module):
             regularizations.extend(pb_embeds)
             loss += pb_loss
 
+        pb1_loss, pb1_embeds = self.neg_loss_inverse('product', 'produced_by', 'product', product_idxs,brand_idxs, brand_pro)
+        if pb1_loss is not None:
+            regularizations.extend(pb1_embeds)
+            loss += pb1_loss
+
         # product + belongs_to -> category
         pc_loss, pc_embeds = self.neg_loss('product', 'belongs_to', 'category', product_idxs, category_idxs)
         if pc_loss is not None:
             regularizations.extend(pc_embeds)
             loss += pc_loss
+
+        pc1_loss, pc1_embeds = self.neg_loss_inverse('product', 'belongs_to', 'product', product_idxs,category_idxs, category_pro)
+        if pc1_loss is not None:
+            regularizations.extend(pc1_embeds)
+            loss += pc1_loss
 
         # product + also_bought -> related_product1
         pr1_loss, pr1_embeds = self.neg_loss('product', 'also_bought', 'related_product', product_idxs, rproduct1_idxs)
@@ -148,17 +161,28 @@ class KnowledgeEmbedding(nn.Module):
             regularizations.extend(pr1_embeds)
             loss += pr1_loss
 
+        pr11_loss, pr11_embeds = self.neg_loss_inverse('product', 'also_bought', 'product', product_idxs,rproduct1_idxs, also_b_pro)
+        if pr11_loss is not None:
+            regularizations.extend(pr11_embeds)
+            loss += pr11_loss
+
         # product + also_viewed -> related_product2
         pr2_loss, pr2_embeds = self.neg_loss('product', 'also_viewed', 'related_product', product_idxs, rproduct2_idxs)
         if pr2_loss is not None:
             regularizations.extend(pr2_embeds)
             loss += pr2_loss
 
+        pr21_loss, pr21_embeds = self.neg_loss_inverse('product', 'also_viewed', 'product', product_idxs,rproduct2_idxs, also_v_pro)
+        if pr21_loss is not None:
+            regularizations.extend(pr21_embeds)
+            loss += pr21_loss
+
         # product + bought_together -> related_product3
         pr3_loss, pr3_embeds = self.neg_loss('product', 'bought_together', 'related_product', product_idxs, rproduct3_idxs)
         if pr3_loss is not None:
             regularizations.extend(pr3_embeds)
             loss += pr3_loss
+
 
         # l2 regularization
         if self.l2_lambda > 0:
@@ -188,9 +212,29 @@ class KnowledgeEmbedding(nn.Module):
                            relation_vec, relation_bias_embedding, self.num_neg_samples, entity_tail_distrib)
 
 
+    def neg_loss_inverse(self,entity_head, relation, entity_tail, entity_head_idxs, entity_tail_idxs,entity_tail1_idxs):
+        mask= entity_tail1_idxs>=0
+        fixed_entity_head_idxs = entity_head_idxs[mask]
+        fixed_entity_tail_idxs = entity_tail_idxs[mask]
+        fixed_entity_tail1_idxs = entity_tail1_idxs[mask]
+        if fixed_entity_head_idxs.size(0) <= 0:
+            return None, []
+
+        entity_head_embedding = getattr(self, entity_head)  # nn.Embedding
+        entity_tail_embedding = getattr(self, entity_tail)  # nn.Embedding
+        relation_vec = getattr(self, relation)  # [1, embed_size]
+        relation_bias_embedding = getattr(self, relation + '_bias')  # nn.Embedding
+        entity_tail_distrib = self.relations['purchase'].et_distrib  # [vocab_size]
+
+        return kg_neg_loss_inverse(entity_head_embedding, entity_tail_embedding,
+                           fixed_entity_head_idxs, fixed_entity_tail_idxs,fixed_entity_tail1_idxs,
+                           relation_vec, relation_bias_embedding, self.num_neg_samples, entity_tail_distrib)
+
+
 def kg_neg_loss(entity_head_embed, entity_tail_embed, entity_head_idxs, entity_tail_idxs,
                 relation_vec, relation_bias_embed, num_samples, distrib):
     """Compute negative sampling loss for triple (entity_head, relation, entity_tail).
+
     Args:
         entity_head_embed: Tensor of size [batch_size, embed_size].
         entity_tail_embed: Tensor of size [batch_size, embed_size].
@@ -200,6 +244,7 @@ def kg_neg_loss(entity_head_embed, entity_tail_embed, entity_head_idxs, entity_t
         relation_bias: Tensor of size [batch_size]
         num_samples: An integer.
         distrib: Tensor of size [vocab_size].
+
     Returns:
         A tensor of [1].
     """
@@ -214,6 +259,7 @@ def kg_neg_loss(entity_head_embed, entity_tail_embed, entity_head_idxs, entity_t
     pos_logits = torch.bmm(pos_vec, example_vec).squeeze() + relation_bias  # [batch_size]
     pos_loss = -pos_logits.sigmoid().log()  # [batch_size]
 
+
     neg_sample_idx = torch.multinomial(distrib, num_samples, replacement=True).view(-1)
     neg_vec = entity_tail_embed(neg_sample_idx)  # [num_samples, embed_size]
     neg_logits = torch.mm(example_vec.squeeze(2), neg_vec.transpose(1, 0).contiguous())
@@ -222,3 +268,41 @@ def kg_neg_loss(entity_head_embed, entity_tail_embed, entity_head_idxs, entity_t
 
     loss = (pos_loss + neg_loss).mean()
     return loss, [entity_head_vec, entity_tail_vec, neg_vec]
+
+def kg_neg_loss_inverse(entity_head_embed, entity_tail1_embed,entity_head_idxs, entity_tail_idxs,entity_tail1_idxs,
+                relation_vec, relation_bias_embed, num_samples, distrib):
+    """Compute negative sampling loss for triple (entity_head, relation, entity_tail).
+
+    Args:
+        entity_head_embed: Tensor of size [batch_size, embed_size].
+        entity_tail_embed: Tensor of size [batch_size, embed_size].
+        entity_head_idxs:
+        entity_tail_idxs:
+        relation_vec: Parameter of size [1, embed_size].
+        relation_bias: Tensor of size [batch_size]
+        num_samples: An integer.
+        distrib: Tensor of size [vocab_size].
+
+    Returns:
+        A tensor of [1].
+    """
+    batch_size = entity_head_idxs.size(0)
+    entity_head_vec = entity_head_embed(entity_head_idxs)  # [batch_size, embed_size]
+    example_vec = entity_head_vec + relation_vec  # [batch_size, embed_size]
+    example_vec = example_vec.unsqueeze(2)  # [batch_size, embed_size, 1]
+
+    entity_tail1_vec = entity_tail1_embed(entity_tail1_idxs)
+    pos_vec = (entity_tail1_vec+relation_vec).unsqueeze(1)  # [batch_size, 1, embed_size]
+    relation_bias = relation_bias_embed(entity_tail_idxs).squeeze(1)  # [batch_size]
+    pos_logits = torch.bmm(pos_vec, example_vec).squeeze() + relation_bias  # [batch_size]
+    pos_loss = -pos_logits.sigmoid().log()  # [batch_size]
+
+
+    neg_sample_idx = torch.multinomial(distrib, num_samples, replacement=True).view(-1)
+    neg_vec = entity_tail1_embed(neg_sample_idx)+relation_vec  # [num_samples, embed_size]
+    neg_logits = torch.mm(example_vec.squeeze(2), neg_vec.transpose(1, 0).contiguous())
+    neg_logits += relation_bias.unsqueeze(1)  # [batch_size, num_samples]
+    neg_loss = -neg_logits.neg().sigmoid().log().sum(1)  # [batch_size]
+
+    loss = (pos_loss + neg_loss).mean()
+    return loss, [entity_head_vec, entity_tail1_vec, neg_vec]
